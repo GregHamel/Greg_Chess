@@ -31,7 +31,7 @@ row_indexes = {k:v for k,v in zip("87654321",range(8))}
 
 #Creates a list of pieces at starting board positions.
 #Ra1 -> white rook at a1.  pb7 -> black pawn at b7   King=G
-starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
+starting_piece_positions = [''.join(p) for p in list(zip("rkbqGbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
                           +list(zip("P"*8,"abcdefgh","2"*8))+list(zip("RKBQGBKR","abcdefgh","1"*8))]
 
 #Create variables for tracking piece positions and the board as the game progresses
@@ -209,8 +209,6 @@ def valid_move(piece, destination):
     #Check King
     if piece[0]in "Gg":
         if abs(destination_coords[0]-coords[0]) <=1 and abs(destination_coords[1]-coords[1]) <=1:
-            if piece_at(destination) not in " X":
-                return False
             return True
         return False
 
