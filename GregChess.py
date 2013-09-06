@@ -3,11 +3,12 @@
 #Author Greg Hamel
 #Simple python chess game
 
-""" Version 1.0
+""" Version 1.1
 Game currently supports basic chess games bewteen two human players. Current version
-does not support castling, capturing en passant or pawn promotion. Does not check
-for check or checkmate, so it is possible to move into check.
+does not support castling. Does not check for check or checkmate, so it is possible to move into check.
 You must actually capture the king to win.
+
+v1.1 updates- Game now supports pawn promotion and capturing en passant. Fixed bug that allowed pawns to perform illegal moves.
 """
 
 rules = """
@@ -27,6 +28,7 @@ base_board = [copy.deepcopy(base_board_row) if row%2 == 0 else copy.deepcopy(bas
 column_indexes = {k:v for k,v in zip("abcdefgh",range(8))}
 row_indexes = {k:v for k,v in zip("87654321",range(8))}
 
+
 #Creates a list of pieces at starting board positions.
 #Ra1 -> white rook at a1.  pb7 -> black pawn at b7   King=G
 starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
@@ -35,7 +37,8 @@ starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","
 #Create variables for tracking piece positions and the board as the game progresses
 current_piece_positions = copy.deepcopy(starting_piece_positions)
 current_board = copy.deepcopy(base_board)
-captured_pieces = {"White(capitals)": [], "Black(lowercase)": []}
+captured_pieces = {"White(capitals)": [], "Black(lowercase)": []}  #Tracks captured pieces
+move_list = []             #Tracks all moves made during the game.
 
 #Takes a piece/position and returns its index values in the board array
 # Ra1 -> (7,0) : White rook is in row[7], column[0]
@@ -92,8 +95,25 @@ def move_piece(piece, destination):
                 else:
                     captured_pieces["Black(lowercase)"]+=[p]
             current_piece_positions.remove(p)
+
     current_piece_positions.remove(piece)
     new_piece_position = piece[0]+destination
+
+    #Handle Pawn Promotion
+    if piece[0] in "Pp":
+        if destination[1] in "18":
+            new_piece = "XXX"
+            while new_piece not in "rkbqpRKBQP":
+                new_piece = input("Promote your pawn. Enter the letter of the piece type you wish to use.")
+                if new_piece not in "rkbqpRKBQP":
+                    print("Invalid piece type. Please select again.")
+            if piece[0] == "P":
+                new_piece = new_piece.upper()
+            else:
+                new_piece = new_piece.lower()
+            new_piece_position = new_piece+destination
+
+    move_list.append((piece, destination))
     current_piece_positions.append(new_piece_position)
     return True
 
@@ -112,8 +132,6 @@ def valid_move(piece, destination):
         print("Piece cannot move to its own space!")
         return False
 
-    print(piece, destination,coords,destination_coords)
-    print(current_board[coords[0]])
     if piece not in current_board[coords[0]]:
         print("That piece does not exist at the specified coordinates!")
         return False
@@ -137,29 +155,41 @@ def valid_move(piece, destination):
         #If pawn has not moved, check if the player is trying to move it two spaces.
         if coords[0] == 6:
             if destination_coords[0] == coords[0]-2:
-                if piece_at(destination) not in " X" or current_board[coords[0]-1][coords[1]] not in " X":
+                if piece_at(destination) not in " X" or current_board[coords[0]-1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
                     return False
                 return True
-        #Checks pawn moves other tham moving two spaces
+        #Checks pawn moves other than moving two spaces
         if destination_coords[0] != coords[0]-1: #If pawn does not move into the next row, return false
+            return False
+        #Pawn cannot move aywhere other than the 3 spaces in front of it.
+        if abs(destination_coords[1]-coords[1]) > 1:
             return False
         if destination_coords[1] == coords[1]:  #If pawn is moving straight, it cannot capture
             if piece_at(destination) not in " X":
                 return False
-        if abs(destination_coords[1]-coords[1]) == 1: #If pawn is moving digonally, it must capture
+        if abs(destination_coords[1]-coords[1]) == 1: #If pawn is moving digonally, that space must contain a piece to capture...
             if piece_at(destination) not in " X":
                 return True
+            #unless capturing en passent. In this case, check the last move in the movelist for a black pawn that moved 2 spaces forward and ended next to the white pawn.
+            if piece[2] == "5":                                                                                   #In the same column the pawn is attempting to move into
+                if move_list[-1][0][0] == "p" and move_list[-1][0][2] == "7" and move_list[-1][1][1] == "5" and piece_coords(move_list[-1][0])[1] == destination_coords[1]:
+                    captured_pieces["Black(lowercase)"]+=move_list[-1][0]
+                    current_piece_positions.remove(move_list[-1][0][0]+move_list[-1][1])
+                    return True
             return False
         return True
 
     if piece[0]== "p": #Checks for black pawns
         if coords[0] == 1:
             if destination_coords[0] == coords[0]+2:
-                if piece_at(destination) not in " X" or current_board[coords[0]+1][coords[1]] not in " X":
+                if piece_at(destination) not in " X" or current_board[coords[0]+1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
                     return False
                 return True
-        #Checks pawn moves other tham moving two spaces
+        #Checks pawn moves other than moving two spaces
         if destination_coords[0] != coords[0]+1: #If pawn does not move into the next row, return false
+            return False
+        #Pawn cannot move aywhere other than the 3 spaces in front of it.
+        if abs(destination_coords[1]-coords[1]) > 1:
             return False
         if destination_coords[1] == coords[1]:  #If pawn is moving straight, it cannot capture
             if piece_at(destination) not in " X":
@@ -167,6 +197,12 @@ def valid_move(piece, destination):
         if abs(destination_coords[1]-coords[1]) == 1: #If pawn is moving digonally, it must capture
             if piece_at(destination) not in " X":
                 return True
+            #unless capturing en passent. In this case, check the last move in the movelist for a black pawn that moved 2 spaces forward and ended next to the white pawn.
+            if piece[2] == "4":
+                if move_list[-1][0][0] == "P" and move_list[-1][0][2] == "2" and move_list[-1][1][1] == "4" and piece_coords(move_list[-1][0])[1] == destination_coords[1]:
+                    captured_pieces["White(capitals)"]+=move_list[-1][0]
+                    current_piece_positions.remove(move_list[-1][0][0]+move_list[-1][1])
+                    return True
             return False
         return True
 
@@ -271,6 +307,11 @@ def greg_chess():
             print("Thanks for playing")
             break
 
+        #Player can check the log of moves made.
+        if next_move == "moves":
+            print(move_list)
+            continue
+
         #Player can type "captured" to check the list of captured pieces
         if next_move == "captured":
             print(captured_pieces)
@@ -309,7 +350,6 @@ def greg_chess():
 
 
 greg_chess()
-
 
 
 
