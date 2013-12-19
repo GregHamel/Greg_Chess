@@ -3,12 +3,12 @@
 #Author Greg Hamel
 #Simple python chess game
 
-""" Version 1.1
+""" Version 1.12
 Game currently supports basic chess games bewteen two human players. Current version
-does not support castling. Does not check for check or checkmate, so it is possible to move into check.
+supports basic castling. Does not check for check or checkmate, so it is possible to move into check and castle through check.
 You must actually capture the king to win.
 
-v1.1 updates- Game now supports pawn promotion and capturing en passant. Fixed bug that allowed pawns to perform illegal moves.
+v1.12 updates- Game now supports castling. You cannot castle with a king/rook that has previously been moved, but you can castle through check.
 """
 
 rules = """
@@ -31,7 +31,7 @@ row_indexes = {k:v for k,v in zip("87654321",range(8))}
 
 #Creates a list of pieces at starting board positions.
 #Ra1 -> white rook at a1.  pb7 -> black pawn at b7   King=G
-starting_piece_positions = [''.join(p) for p in list(zip("rkbqGbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
+starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
                           +list(zip("P"*8,"abcdefgh","2"*8))+list(zip("RKBQGBKR","abcdefgh","1"*8))]
 
 #Create variables for tracking piece positions and the board as the game progresses
@@ -161,7 +161,7 @@ def valid_move(piece, destination):
         #Checks pawn moves other than moving two spaces
         if destination_coords[0] != coords[0]-1: #If pawn does not move into the next row, return false
             return False
-        #Pawn cannot move aywhere other than the 3 spaces in front of it.
+        #Pawn cannot move anywhere other than the 3 spaces in front of it.
         if abs(destination_coords[1]-coords[1]) > 1:
             return False
         if destination_coords[1] == coords[1]:  #If pawn is moving straight, it cannot capture
@@ -209,6 +209,31 @@ def valid_move(piece, destination):
     #Check King
     if piece[0]in "Gg":
         if abs(destination_coords[0]-coords[0]) <=1 and abs(destination_coords[1]-coords[1]) <=1:
+            return True
+        if abs(destination_coords[1]-coords[1]) == 2:   #Castling attempt
+            for p, dest in move_list:    #If the king has already moved, it can't castle
+                if p[0] == piece[0]:
+                    return False
+            if (destination_coords[1]-coords[1]) == 2:   #Determine which rook to move...
+                if piece[0] == "G":
+                    rook = "Rh1"
+                    rook_dest = "f1"
+                else:
+                    rook = "rh8"
+                    rook_dest = "e8"
+            else:
+                if piece[0] == "G":
+                    rook = "Ra1"
+                    rook_dest = "d1"
+                else:
+                    rook = "ra8"
+                    rook_dest = "c8"
+            for p, dest in move_list:  #And check if it has already been moved
+                if p == rook:
+                    return False
+            if not valid_move(rook, piece[1:]): #Rook needs a clear path to the king's current position
+                return False
+            move_piece(rook, rook_dest) #Move the rook to correct space
             return True
         return False
 
@@ -301,7 +326,7 @@ def greg_chess():
         next_move = input("%(player)s player, enter your next move"%{'player':player})
 
         #Player can type q or quit to end the game
-        if next_move in "Quitquit":
+        if next_move in "QUITquit":
             print("Thanks for playing")
             break
 
@@ -347,7 +372,8 @@ def greg_chess():
             break
 
 
-greg_chess()
+if __name__ == "__main__":
+    greg_chess()
 
 
 
