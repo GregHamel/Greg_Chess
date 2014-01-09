@@ -3,12 +3,11 @@
 #Author Greg Hamel
 #Simple python chess game
 
-""" Version 1.12
-Game currently supports basic chess games bewteen two human players. Current version
-supports basic castling. Does not check for check or checkmate, so it is possible to move into check and castle through check.
-You must actually capture the king to win.
+""" Version 1.14
+Game supports basic chess games bewteen two human players. Does not handle draws or resignation.
 
-v1.12 updates- Game now supports castling. You cannot castle with a king/rook that has previously been moved, but you can castle through check.
+v1.14 updates- game now announces check, does not allow moves into check, does not
+allow caslting out of or through check and ends the game when checkmate occurs.
 """
 
 rules = """
@@ -27,6 +26,7 @@ base_board = [copy.deepcopy(base_board_row) if row%2 == 0 else copy.deepcopy(bas
 #Dictionaries mapping chess row/column letters/numbers to array index values
 column_indexes = {k:v for k,v in zip("abcdefgh",range(8))}
 row_indexes = {k:v for k,v in zip("87654321",range(8))}
+all_spaces = [a+b for a in column_indexes for b in row_indexes]
 
 
 #Creates a list of pieces at starting board positions.
@@ -36,7 +36,7 @@ starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","
 
 #Create variables for tracking piece positions and the board as the game progresses
 current_piece_positions = copy.deepcopy(starting_piece_positions)
-current_board = copy.deepcopy(base_board)
+active_board = copy.deepcopy(base_board)
 captured_pieces = {"White(capitals)": [], "Black(lowercase)": []}  #Tracks captured pieces
 move_list = []             #Tracks all moves made during the game.
 
@@ -46,7 +46,7 @@ def piece_coords(piece):
     return (row_indexes[piece[2]],column_indexes[piece[1]])
 
 #Takes a position on the board and returns the piece at that position, " " or "X" if empty
-def piece_at(position):
+def piece_at(position, current_board):
     position_coords = row_indexes[position[1]],column_indexes[position[0]]
     return current_board[position_coords[0]][position_coords[1]]
 
@@ -73,28 +73,55 @@ def display_board(board):
         print (num)
         print(divider)
 
+#Takes a piece and returns its color: "White or Black"
+def piece_color(piece):
+    if piece[0] in "RKBQGP":
+        return "White(capitals)"
+    return "Black(lowercase)"
+
+def opposing_color(color):
+    if color == "White(capitals)":
+        return "Black(lowercase)"
+    return "White(capitals)"
+
 #Takes a piece and a destination space and updates current piece positions with the new positon.
 #If the desination space already contains a piece, that piece is removed and added to the captured pieces dictionary.
 #Piece format = Ra1 (white rook at a1) Desination format = a5 (space a5)
-def move_piece(piece, destination):
-    if not valid_move(piece, destination):
-        print ("Invalid Move")
+def move_piece(piece, destination, player, current_board, move=True):
+    if not valid_move(piece, destination, player, current_board):
+        if move:
+            print ("Invalid Move")
         return False
+
+    intended_positions = copy.deepcopy(current_piece_positions)
+    intended_positions.remove(piece)
+    intended_positions.append(piece[0]+destination)
+
     for p in current_piece_positions:
         if p[1:] == destination:
-            if p[0] in "RKBQGP":
-                if piece[0] in "RKBQGP":  #Invalid move, can't capture your own piece
+            intended_positions.remove(p)
+            intended_board = update_board(intended_positions)
+            if not valid_capture(piece, p):
+                if move:
                     print("Invalid move, can't capture your own piece!")
-                    return False
-                else:
-                    captured_pieces["White(capitals)"]+=[p]
-            else:
-                if piece[0] in "rkbqgp":
-                    print("Invalid move, can't capture your own piece!")
-                    return False
-                else:
-                    captured_pieces["Black(lowercase)"]+=[p]
-            current_piece_positions.remove(p)
+                return False
+            elif check_for_check(player, intended_positions, intended_board):
+                if move:
+                    print("Invalid move, can't move into check!")
+                return False
+            elif move:
+                print(p + " captured!")
+                captured_pieces[piece_color(p)]+=[p]
+                current_piece_positions.remove(p)
+
+    intended_board = update_board(intended_positions)
+    if check_for_check(player, intended_positions, intended_board):
+        if move :
+            print("Invalid move, can't move into check!")
+        return False
+
+    if not move:
+        return True
 
     current_piece_positions.remove(piece)
     new_piece_position = piece[0]+destination
@@ -115,30 +142,33 @@ def move_piece(piece, destination):
 
     move_list.append((piece, destination))
     current_piece_positions.append(new_piece_position)
+
     return True
 
+#Checks if a given piece can capture another piece
+def valid_capture(moving_piece, threatened_piece):
+    if piece_color(moving_piece) == piece_color(threatened_piece):
+        return False
+    return True
 
 #Checks if given move is valid. The move piece function already ensures that a piece cannot capture a friendly piece.
-def valid_move(piece, destination):
+def valid_move(piece, destination, player, current_board):
     coords = piece_coords(piece)
 
     if destination[1] not in row_indexes or destination[0] not in column_indexes:
-        print("Destination space does not exist!")
         return False
 
     destination_coords = row_indexes[destination[1]],column_indexes[destination[0]]
 
     if coords == destination_coords:
-        print("Piece cannot move to its own space!")
         return False
 
     if piece not in current_board[coords[0]]:
-        print("That piece does not exist at the specified coordinates!")
         return False
 
     #Check Rook
     if piece[0]in "Rr":
-        return check_rook(piece, destination,coords,destination_coords)
+        return check_rook(piece, destination,coords,destination_coords,current_board)
 
     #Check Knight
     if piece[0]in "Kk":
@@ -155,7 +185,7 @@ def valid_move(piece, destination):
         #If pawn has not moved, check if the player is trying to move it two spaces.
         if coords[0] == 6:
             if destination_coords[0] == coords[0]-2:
-                if piece_at(destination) not in " X" or current_board[coords[0]-1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
+                if piece_at(destination,current_board) not in " X" or current_board[coords[0]-1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
                     return False
                 return True
         #Checks pawn moves other than moving two spaces
@@ -165,10 +195,10 @@ def valid_move(piece, destination):
         if abs(destination_coords[1]-coords[1]) > 1:
             return False
         if destination_coords[1] == coords[1]:  #If pawn is moving straight, it cannot capture
-            if piece_at(destination) not in " X":
+            if piece_at(destination,current_board) not in " X":
                 return False
         if abs(destination_coords[1]-coords[1]) == 1: #If pawn is moving digonally, that space must contain a piece to capture...
-            if piece_at(destination) not in " X":
+            if piece_at(destination,current_board) not in " X":
                 return True
             #unless capturing en passent. In this case, check the last move in the movelist for a black pawn that moved 2 spaces forward and ended next to the white pawn.
             if piece[2] == "5":                                                                                   #In the same column the pawn is attempting to move into
@@ -182,7 +212,7 @@ def valid_move(piece, destination):
     if piece[0]== "p": #Checks for black pawns
         if coords[0] == 1:
             if destination_coords[0] == coords[0]+2:
-                if piece_at(destination) not in " X" or current_board[coords[0]+1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
+                if piece_at(destination,current_board) not in " X" or current_board[coords[0]+1][coords[1]] not in " X" or destination_coords[1] != coords[1]:
                     return False
                 return True
         #Checks pawn moves other than moving two spaces
@@ -192,10 +222,10 @@ def valid_move(piece, destination):
         if abs(destination_coords[1]-coords[1]) > 1:
             return False
         if destination_coords[1] == coords[1]:  #If pawn is moving straight, it cannot capture
-            if piece_at(destination) not in " X":
+            if piece_at(destination,current_board) not in " X":
                 return False
         if abs(destination_coords[1]-coords[1]) == 1: #If pawn is moving digonally, it must capture
-            if piece_at(destination) not in " X":
+            if piece_at(destination,current_board) not in " X":
                 return True
             #unless capturing en passent. In this case, check the last move in the movelist for a black pawn that moved 2 spaces forward and ended next to the white pawn.
             if piece[2] == "4":
@@ -210,7 +240,7 @@ def valid_move(piece, destination):
     if piece[0]in "Gg":
         if abs(destination_coords[0]-coords[0]) <=1 and abs(destination_coords[1]-coords[1]) <=1:
             return True
-        if abs(destination_coords[1]-coords[1]) == 2:   #Castling attempt
+        if abs(destination_coords[1]-coords[1]) == 2 and (destination_coords[0]-coords[0]) == 0:   #Castling attempt
             for p, dest in move_list:    #If the king has already moved, it can't castle
                 if p[0] == piece[0]:
                     return False
@@ -231,22 +261,35 @@ def valid_move(piece, destination):
             for p, dest in move_list:  #And check if it has already been moved
                 if p == rook:
                     return False
-            if not valid_move(rook, piece[1:]): #Rook needs a clear path to the king's current position
+            if not valid_move(rook, piece[1:],player,current_board): #Rook needs a clear path to the king's current position
                 return False
-            move_piece(rook, rook_dest) #Move the rook to correct space
+
+            if check_for_check(player, current_piece_positions, current_board):
+                print("Can't castle out of check")
+                return False
+
+            intended_positions = copy.deepcopy(current_piece_positions)
+            intended_positions.remove(piece)
+            intended_positions.append(piece[0]+rook_dest)
+            intended_board = update_board(intended_positions)
+            if check_for_check(player, intended_positions, intended_board):
+                print("Cant castle through check!")
+                return False
+
+            move_piece(rook, rook_dest,player,current_board) #Move the rook to correct space
             return True
         return False
 
     #Check Bisop
     if piece[0] in "Bb":
-        return check_bishop(piece, destination,coords,destination_coords)
+        return check_bishop(piece, destination,coords,destination_coords,current_board)
 
     #Check Queen
     if piece[0] in "Qq":
-        return check_rook(piece, destination,coords,destination_coords) or check_bishop(piece, destination,coords,destination_coords)
+        return check_rook(piece, destination,coords,destination_coords,current_board) or check_bishop(piece, destination,coords,destination_coords,current_board)
 
 #Helper function for checking bishop moves
-def check_bishop(piece, destination,coords,destination_coords):
+def check_bishop(piece, destination,coords,destination_coords,current_board):
     if destination_coords[0] != coords[0] and destination_coords[1] != coords[1]: #Bishop can't end in the same row or column after moving
         if coords[0]-destination_coords[0] <0:                             #number of rows moved
             spaces_moved = abs(coords[0]-destination_coords[0])
@@ -282,7 +325,7 @@ def check_bishop(piece, destination,coords,destination_coords):
     return False
 
 #Helper function for checking rook moves
-def check_rook(piece, destination,coords,destination_coords):
+def check_rook(piece, destination,coords,destination_coords,current_board):
     if coords[0] != destination_coords[0] and coords[1] != destination_coords[1]:
         return False
     if coords[0] != destination_coords[0]:  #Piece is moving in column
@@ -309,24 +352,74 @@ def check_rook(piece, destination,coords,destination_coords):
                     return False
             return True
 
+#Determines whether king of specified color is in check.
+def check_for_check(color, piece_positions,current_board):
+    for p in piece_positions:
+        if piece_color(p) == color and p[0] in "Gg":
+            king = p
+
+    for p in piece_positions:
+        if piece_color(p) == opposing_color(color):
+            if valid_move(p, king[1:], opposing_color(color), current_board) and valid_capture(p, king):
+                return True
+
+    return False
+
+def check_for_mate(color, piece_positions, current_board):
+    for p in piece_positions:
+        if piece_color(p) == color:
+            for space in all_spaces:
+                if move_piece(p, space, color, current_board, move=False):
+                    print("You can avoid mate here!", p, space)
+                    return False
+    return True   #No valid move was found, therefore player is in checkmate
+
+
+
+#Checks if user input is valid
+def valid_input(inp):
+    if inp in ["moves", "captured","quit"]:
+        return True
+    if len(inp) != 6:
+        return False
+    if inp[1] not in "abcdefgh" or inp[2] not in "12345678" or inp[3] != " " or \
+       inp[4] not in "abcdefgh" or inp[5] not in "12345678":
+        return False
+    return True
 
 #Main game loop
 def greg_chess():
     print (rules)
-    player = "White"
+    player = 'White(capitals)'
     while True:
-        #Need to manipulate the global current_board
-        global current_board
-        current_board = update_board(current_piece_positions)
+        #Need to manipulate the global active_board
+        global active_board
+        active_board = update_board(current_piece_positions)
+
         print ("It's the %(player)s player's Turn"%{'player':player})
-        display_board(current_board)
+        display_board(active_board)
+
+        #Announce check if the last move threatens the current player's king...
+        print("checking check...")
+        if check_for_check(player, current_piece_positions, active_board):
+            print (player + "'s king is in check!")
+            #And check for mate
+            print("checking for mate...")
+            if check_for_mate(player, current_piece_positions, active_board):
+                print ("Checkmate! {} wins!".format(opposing_color(player)))
+                print ("Thanks for playing!")
+                break
 
         #Get input from the user in the form "piece destination" --> "Pa2 a4"
         #Selects pawn at a2 and moves it to a4.
         next_move = input("%(player)s player, enter your next move"%{'player':player})
 
-        #Player can type q or quit to end the game
-        if next_move in "QUITquit":
+        if not valid_input(next_move):
+            print("Invalid input!")
+            continue
+
+        #Player can type quit to end the game
+        if next_move == "quit":
             print("Thanks for playing")
             break
 
@@ -343,34 +436,14 @@ def greg_chess():
         #Moves the specified piece to the specified destination if the move is valid.
         #Otherwise, the player is asked for a new move.
         next_move = next_move.split()
-        if player == "White" and next_move[0][0] not in "PRKBQG":
+        if player == 'White(capitals)' and next_move[0][0] not in "PRKBQG":
             print("Invalid piece for White player!")
             continue
-        if player == "Black" and next_move[0][0] not in "prkbqg":
+        if player == 'Black(lowercase)' and next_move[0][0] not in "prkbqg":
             print("Invalid piece for Black player!")
             continue
-        if move_piece(next_move[0], next_move[1]):
-            if player == "White":
-                player = "Black"
-            else:
-                player = "White"
-
-        #Check to see if King has been captured. If so, the game ends.
-        game_over = False
-        for p in captured_pieces['White(capitals)']:
-            if p[0]== "G":
-                print ("Black wins")
-                game_over = True
-                break
-        for p in captured_pieces['Black(lowercase)']:
-            if p[0]== "g":
-                print ("White wins")
-                game_over = True
-                break
-        if game_over == True:
-            print("Thanks for playing!")
-            break
-
+        if move_piece(next_move[0], next_move[1], player,active_board):
+            player = opposing_color(player)
 
 if __name__ == "__main__":
     greg_chess()
