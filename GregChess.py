@@ -3,16 +3,15 @@
 #Author Greg Hamel
 #Simple python chess game
 
-""" Version 1.14
-Game supports basic chess games bewteen two human players. Does not handle draws or resignation.
+""" Version 1.15
+Game supports basic chess games bewteen two human players.
 
-v1.14 updates- game now announces check, does not allow moves into check, does not
-allow caslting out of or through check and ends the game when checkmate occurs.
+v1.15 updates- Game now handles draws for repeated moves, stalemate and allows resignation.
 """
 
 rules = """
 Make moves by typing in the piece you want to move and its coordinates followed
-by a space and the coordinats of the square that you want to move to.
+by a space and the coordinats of the square that you want to it move to.
 For example, as the White(capital letters) player, if you have a pawn at a2 and
 you want to move it up to a3, you would type "Pa2 a3."
 """
@@ -33,6 +32,8 @@ all_spaces = [a+b for a in column_indexes for b in row_indexes]
 #Ra1 -> white rook at a1.  pb7 -> black pawn at b7   King=G
 starting_piece_positions = [''.join(p) for p in list(zip("rkbqgbkr","abcdefgh","8"*8))+list(zip("p"*8,"abcdefgh","7"*8))\
                           +list(zip("P"*8,"abcdefgh","2"*8))+list(zip("RKBQGBKR","abcdefgh","1"*8))]
+
+
 
 #Create variables for tracking piece positions and the board as the game progresses
 current_piece_positions = copy.deepcopy(starting_piece_positions)
@@ -365,20 +366,27 @@ def check_for_check(color, piece_positions,current_board):
 
     return False
 
+#Determines if player has any valid moves.
 def check_for_mate(color, piece_positions, current_board):
     for p in piece_positions:
         if piece_color(p) == color:
             for space in all_spaces:
                 if move_piece(p, space, color, current_board, move=False):
-                    print("You can avoid mate here!", p, space)
                     return False
-    return True   #No valid move was found, therefore player is in checkmate
+    return True  #No valid move was found, therefore player is in checkmate or stalemate
 
-
+#Draw occurs when both players move the same piece back and forth.
+def check_draw():
+    if len(move_list) < 8:
+        return False
+    if move_list[-1] == move_list[-5] and move_list[-2] == move_list[-6] and\
+       move_list[-3] == move_list[-7] and move_list[-4] == move_list[-8]:
+        return True
+    return False
 
 #Checks if user input is valid
 def valid_input(inp):
-    if inp in ["moves", "captured","quit"]:
+    if inp in ["moves", "captured","quit","resign"]:
         return True
     if len(inp) != 6:
         return False
@@ -410,6 +418,17 @@ def greg_chess():
                 print ("Thanks for playing!")
                 break
 
+        if not check_for_check(player, current_piece_positions, active_board):
+            if check_for_mate(player, current_piece_positions, active_board):
+                print("{} has no valid moves! Stalemate!".format(player))
+                print ("Thanks for playing!")
+                break
+
+        if check_draw():
+            print ("Draw! Too many repeated moves!")
+            print ("Thanks for playing!")
+            break
+
         #Get input from the user in the form "piece destination" --> "Pa2 a4"
         #Selects pawn at a2 and moves it to a4.
         next_move = input("%(player)s player, enter your next move"%{'player':player})
@@ -433,8 +452,13 @@ def greg_chess():
             print(captured_pieces)
             continue
 
-        #Moves the specified piece to the specified destination if the move is valid.
-        #Otherwise, the player is asked for a new move.
+        #Player can type "resign" to concede the game.
+        if next_move == "resign":
+            print ("{} resigns! {} wins!".format(player, opposing_color(player)))
+            print ("Thanks for playing!")
+            break
+
+        #Moves the specified piece to the specified destination.
         next_move = next_move.split()
         if player == 'White(capitals)' and next_move[0][0] not in "PRKBQG":
             print("Invalid piece for White player!")
